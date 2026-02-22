@@ -1,4 +1,6 @@
 from rest_framework import generics
+
+from apps.core.permissions import AuditLogPermission
 from .models import AuditLog
 from .serializers import AuditLogSerializer
 from rest_framework.permissions import IsAuthenticated
@@ -8,12 +10,12 @@ class AuditLogListView(generics.ListAPIView):
     """
     GET /api/audit-logs/
     
-    - 관리자(is_staff=True) → 전체 조회
-    - 일반 사용자 → 본인 기록만 조회
+    - Admin → 전체 조회
+    - Operator → 본인 기록만 조회
     """
 
     serializer_class = AuditLogSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, AuditLogPermission]
 
     def get_queryset(self):
 
@@ -21,9 +23,11 @@ class AuditLogListView(generics.ListAPIView):
 
         queryset = AuditLog.objects.select_related('user').order_by('-created_at')
 
-        # 관리자면 전체 조회, 일반 사용자는 본인 기록만 조회
-        if user.is_staff:
+        if user.role == user.Role.ADMIN:
             return queryset
         
-        return queryset.filter(user=user)
+        if user.role == user.Role.OPERATOR:
+            return queryset.filter(user=user)
+        
+        return AuditLog.objects.none()
 

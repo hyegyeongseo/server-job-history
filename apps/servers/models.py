@@ -7,17 +7,17 @@ STATUS_CHOICES = [
     ('standby', '대기 중'),
 
     # 전환/작업 상태
-    ('provisioning', '설치/배포 중'),
-    ('maintenance', '점검 중'),
+    ('provisioning', '구성 중'),
+    ('maintenance', '유지보수 중'),
     ('rebooting', '재부팅 중'),
 
     # 장애/비정상 상태
-    ('down', '다운/장애'),
-    ('unreachable', '응답 없음'),
+    ('down', '서비스 중단'),
+    ('unreachable', '통신 불가'),
 
     # 종료/폐기 상태
-    ('offline', '종료'),
-    ('decommissioned', '폐기'),
+    ('offline', '전원 꺼짐'),
+    ('decommissioned', '폐기됨'),
 ]
 
 class Server(models.Model):

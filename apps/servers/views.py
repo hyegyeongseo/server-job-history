@@ -1,7 +1,8 @@
-from django.shortcuts import render
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.db import transaction
+from apps.core.models import User
+from apps.core.permissions import ServerPermission
 from .models import Server
 from .serializers import ServerSerializer
 from apps.audit.utils import create_audit_log
@@ -9,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 
 class ServerViewSet(viewsets.ModelViewSet):
     serializer_class = ServerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ServerPermission]
 
     def perform_create(self, serializer):
         """
@@ -31,7 +32,11 @@ class ServerViewSet(viewsets.ModelViewSet):
         기본: is_deleted=False 서버만 조회
         추가: ?server_name=xxx 필터 지원
         """
-        queryset = Server.objects.filter(is_deleted=False)
+        # Admin은 삭제된 서버까지 포함해서 전체 리스트 조회 가능
+        if self.request.user.role == User.Role.ADMIN:
+            queryset = Server.objects.all()
+        else:
+            queryset = Server.objects.filter(is_deleted=False)
 
         server_name = self.request.query_params.get('server_name')
 
@@ -68,18 +73,29 @@ class ServerViewSet(viewsets.ModelViewSet):
                 description=description
             )
     
-    def perform_destroy(self, instance):
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+
         """
         서버 삭제(soft delete) + 감사 로그 기록
         """
-        with transaction.atomic():
-            instance.is_deleted = True
-            instance.save(update_fields=["is_deleted"])
+        user_role = request.user.role
 
-            create_audit_log(
-                user=self.request.user,
-                action='delete',
-                target_type='servers',
-                target_id=instance.id,
-                description=f'Soft deleted server {instance.name} with IP {instance.ip_address}'
-            )
+        with transaction.atomic():
+
+            # Admin / Operator → Soft delete
+            if user_role in [User.Role.ADMIN, User.Role.OPERATOR]:
+                instance.is_deleted = True
+                instance.save(update_fields=["is_deleted"])
+
+                create_audit_log(
+                    user=request.user,
+                    action='delete',
+                    target_type='servers',
+                    target_id=instance.id,
+                    description=f"Server '{instance.name}' deleted by {user_role} (Soft Delete)"
+                )
+
+                return Response(status=status.HTTP_204_NO_CONTENT)
+
+            return Response(status=status.HTTP_403_FORBIDDEN)
