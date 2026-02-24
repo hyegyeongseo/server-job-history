@@ -1,9 +1,10 @@
 from rest_framework import generics
-
 from apps.core.permissions import AuditLogPermission
 from .models import AuditLog
 from .serializers import AuditLogSerializer
 from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter
 
 class AuditLogListView(generics.ListAPIView):
 
@@ -16,6 +17,14 @@ class AuditLogListView(generics.ListAPIView):
 
     serializer_class = AuditLogSerializer
     permission_classes = [IsAuthenticated, AuditLogPermission]
+
+    # 필터링과 검색을 위한 설정
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = {
+        'action': ['exact'],
+        'created_at': ['date__gte', 'date__lte'], # 시작일~종료일 범위를 위해 gte, lte 추가
+    }
+    search_fields = ['user__username', 'ip_address']
 
     def get_queryset(self):
 

@@ -41,3 +41,4 @@ class AuditLogPermission(BasePermission):
             return user.role in [User.Role.ADMIN, User.Role.OPERATOR]
         
         return False
+    

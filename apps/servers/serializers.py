@@ -5,4 +5,5 @@ class ServerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Server
         fields = ['id', 'name', 'ip_address', 'status', 'is_deleted']
+        read_only_fields = ['is_deleted']
 

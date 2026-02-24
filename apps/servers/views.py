@@ -7,10 +7,27 @@ from .models import Server
 from .serializers import ServerSerializer
 from apps.audit.utils import create_audit_log
 from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.decorators import action
 
 class ServerViewSet(viewsets.ModelViewSet):
     serializer_class = ServerSerializer
     permission_classes = [IsAuthenticated, ServerPermission]
+
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+
+    filterset_fields = {
+        'name': ['exact'],
+        'ip_address': ['exact'],
+        'status': ['exact'],
+        'is_deleted': ['exact'],
+    }
+
+    search_fields = ['name', 'ip_address']
+    ordering_fields = ['name', 'ip_address', 'id']
+
+    ordering = ['-id']
 
     def perform_create(self, serializer):
         """
@@ -18,7 +35,7 @@ class ServerViewSet(viewsets.ModelViewSet):
         트랜잭션 처리: 서버와 로그가 둘 다 성공해야 commit
         """
         with transaction.atomic():
-            server = serializer.save(created_by=self.request.user)
+            server = serializer.save()
             create_audit_log(
                 user=self.request.user,
                 action='create',
@@ -34,16 +51,10 @@ class ServerViewSet(viewsets.ModelViewSet):
         """
         # Admin은 삭제된 서버까지 포함해서 전체 리스트 조회 가능
         if self.request.user.role == User.Role.ADMIN:
-            queryset = Server.objects.all()
-        else:
-            queryset = Server.objects.filter(is_deleted=False)
-
-        server_name = self.request.query_params.get('server_name')
-
-        if server_name:
-            queryset = queryset.filter(name__icontains=server_name)
+            return Server.objects.all()
         
-        return queryset
+        # 그 외는 삭제 안 된 것만
+        return Server.objects.filter(is_deleted=False)
 
     def perform_update(self, serializer):
         """
@@ -99,3 +110,37 @@ class ServerViewSet(viewsets.ModelViewSet):
                 return Response(status=status.HTTP_204_NO_CONTENT)
 
             return Response(status=status.HTTP_403_FORBIDDEN)
+
+    # 서버 복구 (Soft Delete -> Restore) 
+    @action(detail=True, methods=['patch'], url_path='restore')
+    def restore(self, request, pk=None):
+        server = self.get_object()
+
+        if not server.is_deleted:
+            return Response(
+                {"message": "이미 활성 상태입니다."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.user.role != User.Role.ADMIN:
+            return Response(
+                {"message": "복구는 관리자만 가능합니다."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        with transaction.atomic():
+            server.is_deleted = False
+            server.save(update_fields=["is_deleted"])
+
+            create_audit_log(
+                user=request.user,
+                action='restore',
+                target_type='servers',
+                target_id=server.id,
+                description=f"Server '{server.name}' restored"
+            )
+
+        return Response(
+            {"message": "서버가 복구되었습니다."},
+            status=status.HTTP_200_OK
+        )
