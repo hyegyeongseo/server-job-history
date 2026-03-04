@@ -28,6 +28,10 @@ class AuditLogListView(generics.ListAPIView):
 
     def get_queryset(self):
 
+        # Swagger 문서 생성 시 예외 방지
+        if getattr(self, "swagger_fake_view", False):
+            return AuditLog.objects.none()
+
         user = self.request.user
 
         queryset = AuditLog.objects.select_related('user').order_by('-created_at')

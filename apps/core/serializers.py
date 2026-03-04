@@ -28,3 +28,5 @@ class JWTLogInSerializer(serializers.Serializer):
             'username': user.username
         }
     
+class EmptySerializer(serializers.Serializer):
+    pass

@@ -4,7 +4,7 @@ from rest_framework.request import Request
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.settings import api_settings
-from .serializers import JWTLogInSerializer
+from .serializers import JWTLogInSerializer, EmptySerializer
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.decorators import action
@@ -43,6 +43,7 @@ class LogInView(generics.GenericAPIView):
 class RefreshView(views.APIView):
     permission_classes = ()
     authentication_classes = ()
+    serializer_class = EmptySerializer # Swagger 대응
 
     def post(self, request: Request):
         refresh_cookie = request.COOKIES.get('refresh')
@@ -76,6 +77,7 @@ class RefreshView(views.APIView):
 class LogOutView(views.APIView):
     permission_classes = ()
     authentication_classes = ()
+    serializer_class = EmptySerializer # Swagger 대응
 
     def post(self, request: Request):
         response = Response({"message": "성공적으로 로그아웃되었습니다."}, status=status.HTTP_200_OK)

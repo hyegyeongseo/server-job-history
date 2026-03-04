@@ -49,6 +49,11 @@ class ServerViewSet(viewsets.ModelViewSet):
         기본: is_deleted=False 서버만 조회
         추가: ?server_name=xxx 필터 지원
         """
+
+        # Swagger 대응
+        if getattr(self, "swagger_fake_view", False):
+            return Server.objects.none()
+        
         # Admin은 삭제된 서버까지 포함해서 전체 리스트 조회 가능
         if self.request.user.role == User.Role.ADMIN:
             return Server.objects.all()
