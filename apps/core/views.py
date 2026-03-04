@@ -47,12 +47,12 @@ class RefreshView(views.APIView):
     def post(self, request: Request):
         refresh_cookie = request.COOKIES.get('refresh')
         if not refresh_cookie:
-            return Response({"message": "refresh token not found"},
+            return Response({"detail": "인증 정보(Refresh Token)를 찾을 수 없습니다."},
                             status=status.HTTP_401_UNAUTHORIZED)
         try:
             refresh_token = RefreshToken(refresh_cookie)
         except Exception:
-            return Response({"message": "invalid refresh token"},
+            return Response({"detail": "유효하지 않거나 만료된 인증 정보입니다."},
                             status=status.HTTP_401_UNAUTHORIZED)
 
         response = Response({"access": str(refresh_token.access_token)}, status=status.HTTP_200_OK)
@@ -78,7 +78,7 @@ class LogOutView(views.APIView):
     authentication_classes = ()
 
     def post(self, request: Request):
-        response = Response({"message": "logged out successfully"}, status=status.HTTP_200_OK)
+        response = Response({"message": "성공적으로 로그아웃되었습니다."}, status=status.HTTP_200_OK)
         response.delete_cookie('refresh', path='/api/auth')
         return response
     

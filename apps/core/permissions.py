@@ -10,23 +10,15 @@ class ServerPermission(BasePermission):
         if not user.is_authenticated:
             return False
         
+        role = getattr(user, 'role', None)
+        
         # 조회는 모두 허용
         if request.method in SAFE_METHODS:
             return True
         
-        # 생성
-        if request.method == 'POST':
-            return user.role != User.Role.VIEWER
+        # 생성, 수정, 삭제 모두 Viewer만 아니면 허용
+        return role != User.Role.VIEWER
         
-        # 수정
-        if request.method in ['PATCH', 'PUT']:
-            return user.role != User.Role.VIEWER
-        
-        # 삭제
-        if request.method == 'DELETE':
-            return user.role != User.Role.VIEWER
-        
-        return False
 
 class AuditLogPermission(BasePermission):
 
@@ -36,9 +28,41 @@ class AuditLogPermission(BasePermission):
         if not user.is_authenticated:
             return False
         
+        role = getattr(user, 'role', None)
+        
         # 조회만 허용
         if request.method in SAFE_METHODS:
-            return user.role in [User.Role.ADMIN, User.Role.OPERATOR]
+            return role != User.Role.VIEWER
         
         return False
     
+class JobPermission(BasePermission):
+    """
+    Admin: 전체 가능
+    Operator: 서버/작업 관리 가능
+    Viewer: 조회만 가능
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+
+        if not user or not user.is_authenticated:
+            return False
+        
+        role = getattr(user, 'role', None)
+
+        # 조회
+        if request.method in SAFE_METHODS:
+            return True
+
+        # 생성
+        if request.method == 'POST':
+            return role != User.Role.VIEWER
+
+        # 수정
+        if request.method in ['PATCH', 'PUT']:
+            return role != User.Role.VIEWER
+        
+        # 삭제
+        if request.method == 'DELETE':
+            return False

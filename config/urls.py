@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/', include('apps.servers.urls')),
     path('api/audit-logs/', include('apps.audit.urls')),
     path('api/auth/', include('apps.core.urls')),
+    path('api/jobs/', include('apps.jobs.urls')),
 
     # API 문서 관련 URL 패턴
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
