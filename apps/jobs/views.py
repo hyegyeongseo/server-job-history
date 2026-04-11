@@ -9,6 +9,7 @@ from apps.audit.utils import create_audit_log
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from .serializers import JobSerializer, JobUpdateSerializer
 
 class JobViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'put']  # DELETE 제외
@@ -38,7 +39,12 @@ class JobViewSet(viewsets.ModelViewSet):
         "status",
         "action_type",
     ]  
-    ordering = ["-created_at"] 
+    ordering = ["-created_at"]
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return JobUpdateSerializer
+        return JobSerializer
 
     # 작업 생성(신규/정정/추가)
     def perform_create(self, serializer):

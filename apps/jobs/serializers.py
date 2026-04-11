@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import Job
 
-
 class JobSerializer(serializers.ModelSerializer):
     created_by = serializers.ReadOnlyField(source="created_by.username")
 
@@ -15,10 +14,16 @@ class JobSerializer(serializers.ModelSerializer):
             "root_job",
         ]
 
+
+class JobUpdateSerializer(serializers.ModelSerializer):
+    # 수정 시 허용할 필드만 정의
+    class Meta:
+        model = Job
+        fields = ["action_type", "description", "status"]
+
     def update(self, instance, validated_data):
         if not instance.can_edit():
             raise serializers.ValidationError(
                 "작업 생성 30분 이후에는 수정할 수 없습니다. 정정 작업으로 등록하세요."
             )
-
         return super().update(instance, validated_data)
