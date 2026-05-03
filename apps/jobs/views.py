@@ -10,12 +10,15 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .serializers import JobSerializer, JobUpdateSerializer
+from config.observability.logging import logger
+from config.observability.metrics import JOB_CREATED_TOTAL, JOB_UPDATED_TOTAL
+from opentelemetry import trace
 
 class JobViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'put']  # DELETE 제외
     queryset = Job.objects.filter(
-    server__is_deleted=False
-    ).order_by("-created_at")
+        server__is_deleted=False
+    ).select_related("server", "created_by").order_by("-created_at")
     serializer_class = JobSerializer
     permission_classes = [IsAuthenticated, JobPermission]
 
@@ -65,6 +68,21 @@ class JobViewSet(viewsets.ModelViewSet):
                 job.root_job = job
                 job.save(update_fields=["root_job"])
 
+            # Observability
+
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                span.set_attribute("server.environment", job.server.environment)
+
+            JOB_CREATED_TOTAL.labels(action_type=job.action_type, environment=job.server.environment).inc()
+            logger.info("job created", extra={
+                "job_id": job.id,
+                "server_id": job.server_id,
+                "environment": job.server.environment,
+                "action_type": job.action_type,
+                "is_correction": previous_job is not None,
+            })
+
             create_audit_log(
                 user=self.request.user,
                 action="create",
@@ -97,11 +115,16 @@ class JobViewSet(viewsets.ModelViewSet):
                         f"{field}: {old_value} -> {new_value}"
                     )
 
-            description = (
-                "; ".join(changes)
-                if changes
-                else "No changes"
-            )
+            description = "; ".join(changes) if changes else "No changes"
+
+            JOB_UPDATED_TOTAL.labels(
+                action_type=updated_instance.action_type,
+                environment=updated_instance.server.environment
+            ).inc()
+            logger.info("job updated", extra={
+                "job_id": updated_instance.id,
+                "changes": description,
+            })
 
             create_audit_log(
                 user=self.request.user,
@@ -119,7 +142,7 @@ class JobViewSet(viewsets.ModelViewSet):
         chain = Job.objects.filter(
             root_job=job.root_job,
             server__is_deleted=False
-        ).order_by("created_at")
+        ).select_related("server", "created_by").order_by("created_at")
 
         serializer = self.get_serializer(chain, many=True)
         return Response(serializer.data)

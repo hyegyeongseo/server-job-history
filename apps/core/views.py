@@ -5,10 +5,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.settings import api_settings
 from .serializers import JWTLogInSerializer, EmptySerializer
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.filters import SearchFilter, OrderingFilter
-from rest_framework.decorators import action
-from apps.audit.models import AuditLog
+from config.observability.logging import logger
+from config.observability.metrics import LOGIN_TOTAL
 
 # Refresh 토큰을 쿠키에 저장
 def set_refresh_token_cookie(response: Response, refresh_token: str) -> Response:
@@ -31,7 +29,21 @@ class LogInView(generics.GenericAPIView):
 
     def post(self, request: Request):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception:
+            LOGIN_TOTAL.labels(result="failure").inc()
+            logger.warning("login failed", extra={
+                "username": request.data.get("username"),
+                "ip": request.META.get("REMOTE_ADDR"),
+            })
+            raise
+
+        LOGIN_TOTAL.labels(result="success").inc()
+        logger.info("login success", extra={
+            "username": request.data.get("username"),
+            "ip": request.META.get("REMOTE_ADDR"),
+        })
 
         data = serializer.validated_data
         refresh_token = data.pop('refresh')
@@ -48,13 +60,23 @@ class RefreshView(views.APIView):
     def post(self, request: Request):
         refresh_cookie = request.COOKIES.get('refresh')
         if not refresh_cookie:
+            logger.warning("token refresh failed: no cookie", extra={
+                "ip": request.META.get("REMOTE_ADDR"),
+            })
             return Response({"detail": "인증 정보(Refresh Token)를 찾을 수 없습니다."},
                             status=status.HTTP_401_UNAUTHORIZED)
         try:
             refresh_token = RefreshToken(refresh_cookie)
         except Exception:
+            logger.warning("token refresh failed: invalid token", extra={
+                "ip": request.META.get("REMOTE_ADDR"),
+            })
             return Response({"detail": "유효하지 않거나 만료된 인증 정보입니다."},
                             status=status.HTTP_401_UNAUTHORIZED)
+
+        logger.info("token refreshed", extra={
+            "ip": request.META.get("REMOTE_ADDR"),
+        })
 
         response = Response({"access": str(refresh_token.access_token)}, status=status.HTTP_200_OK)
 
@@ -80,6 +102,9 @@ class LogOutView(views.APIView):
     serializer_class = EmptySerializer # Swagger 대응
 
     def post(self, request: Request):
+        logger.info("logout", extra={
+            "ip": request.META.get("REMOTE_ADDR"),
+        })
         response = Response({"message": "성공적으로 로그아웃되었습니다."}, status=status.HTTP_200_OK)
         response.delete_cookie('refresh', path='/api/auth')
         return response
