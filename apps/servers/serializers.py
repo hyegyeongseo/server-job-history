@@ -4,6 +4,6 @@ from .models import Server
 class ServerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Server
-        fields = ['id', 'name', 'ip_address', 'status', 'is_deleted']
+        fields = ['id', 'name', 'ip_address', 'status', 'environment', 'is_deleted']
         read_only_fields = ['is_deleted']
 

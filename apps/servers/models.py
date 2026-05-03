@@ -20,11 +20,22 @@ STATUS_CHOICES = [
     ('decommissioned', '폐기됨'),
 ]
 
+ENVIRONMENT_CHOICES = [
+    ('prod', '운영 환경'),
+    ('stg', '스테이징 환경'),
+    ('dev', '개발 환경'),
+]
+
 class Server(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, unique=True)
     ip_address = models.GenericIPAddressField(unique=True)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='online')
+    environment = models.CharField(
+        max_length=10,
+        choices=ENVIRONMENT_CHOICES,
+        db_index=True,               
+    )
     is_deleted = models.BooleanField(default=False)
 
     def __str__(self):

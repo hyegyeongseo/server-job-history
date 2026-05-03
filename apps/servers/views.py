@@ -10,6 +10,10 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.decorators import action
+from config.observability.logging import logger
+from config.observability.metrics import SERVER_COUNT_BY_STATUS
+from django.db.transaction import on_commit
+from opentelemetry import trace
 
 class ServerViewSet(viewsets.ModelViewSet):
     serializer_class = ServerSerializer
@@ -21,6 +25,7 @@ class ServerViewSet(viewsets.ModelViewSet):
         'name': ['exact'],
         'ip_address': ['exact'],
         'status': ['exact'],
+        'environment': ['exact', 'in'],
         'is_deleted': ['exact'],
     }
 
@@ -29,6 +34,19 @@ class ServerViewSet(viewsets.ModelViewSet):
 
     ordering = ['-id']
 
+    # Gauge 전체 리셋 후 재집계
+    def _refresh_server_gauge(self):
+        from django.db.models import Count
+        SERVER_COUNT_BY_STATUS._metrics.clear()
+        qs = Server.objects.filter(is_deleted=False) \
+            .values("status") \
+            .annotate(cnt=Count("id"))
+        for row in qs:
+            SERVER_COUNT_BY_STATUS.labels(
+                status=row["status"],
+                environment=row["environment"],
+            ).set(row["cnt"])
+
     def perform_create(self, serializer):
         """
         서버 생성 + 감사 로그 기록
@@ -36,13 +54,32 @@ class ServerViewSet(viewsets.ModelViewSet):
         """
         with transaction.atomic():
             server = serializer.save()
+
+            # trace 속성 추가
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                span.set_attribute("server.environment", server.environment)
+
+            logger.info("server created", extra={
+                "server_id": server.id,
+                "server_name": server.name,
+                "ip_address": server.ip_address,
+                "environment": server.environment,
+            })
+
             create_audit_log(
                 user=self.request.user,
                 action='create',
                 target_type='servers',
                 target_id=server.id,
-                description=f'Created server {server.name} with IP {server.ip_address}'
+                description=(
+                    f'Created server {server.name} '
+                    f'({server.environment}) with IP {server.ip_address}'
+                ),
             )
+
+            on_commit(lambda: self._refresh_server_gauge())
+
     
     def get_queryset(self):
         """
@@ -61,19 +98,23 @@ class ServerViewSet(viewsets.ModelViewSet):
         # 그 외는 삭제 안 된 것만
         return Server.objects.filter(is_deleted=False)
 
-    def perform_update(self, serializer):
-        """
-        서버 수정 + 감사 로그 기록
-        변경 내용(description)에 이전 값과 새로운 값을 기록
-        """
+    def perform_update(self, serializer):       
         with transaction.atomic():
-            instance = self.get_object()
-            
+            instance = serializer.instance # ← DB 조회 없이 기존 객체 사용
             old_data = {field: getattr(instance, field) for field in serializer.validated_data.keys()}
-
             updated_instance = serializer.save()
 
-            # 변경 내용 기록
+            # trace 속성 추가
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                span.set_attribute("server.environment", updated_instance.environment)
+
+            logger.info("server updated", extra={
+                "server_id": updated_instance.id,
+                "changed_fields": list(serializer.validated_data.keys()),
+            })
+
+            # 변경 내용에 이전 값과 새로운 값을 기록
             changes = []
             for field, old_value in old_data.items():
                 new_value = getattr(updated_instance, field)
@@ -86,36 +127,42 @@ class ServerViewSet(viewsets.ModelViewSet):
                 action='update',
                 target_type='servers',
                 target_id=updated_instance.id,
-                description=description
+                description=description,
             )
-    
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
 
+            on_commit(lambda: self._refresh_server_gauge())
+    
+    def destroy(self, request, *args, **kwargs):       
         """
         서버 삭제(soft delete) + 감사 로그 기록
         """
+        instance = self.get_object()
         user_role = request.user.role
+
+        if user_role not in [User.Role.ADMIN, User.Role.OPERATOR]:
+            return Response(status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
 
             # Admin / Operator → Soft delete
-            if user_role in [User.Role.ADMIN, User.Role.OPERATOR]:
-                instance.is_deleted = True
-                instance.save(update_fields=["is_deleted"])
+            instance.is_deleted = True
+            instance.save(update_fields=["is_deleted"])
 
-                create_audit_log(
-                    user=request.user,
-                    action='delete',
-                    target_type='servers',
-                    target_id=instance.id,
-                    description=f"Server '{instance.name}' deleted by {user_role} (Soft Delete)"
-                )
+            logger.info("server soft-deleted", extra={"server_id": instance.id})
 
-                return Response(status=status.HTTP_204_NO_CONTENT)
+            create_audit_log(
+                user=request.user,
+                action='delete',
+                target_type='servers',
+                target_id=instance.id,
+                description=f"Server '{instance.name}' deleted by {user_role} (Soft Delete)"
+            )
 
-            return Response(status=status.HTTP_403_FORBIDDEN)
+            on_commit(lambda: self._refresh_server_gauge())
 
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+            
     # 서버 복구 (Soft Delete -> Restore) 
     @action(detail=True, methods=['patch'], url_path='restore')
     def restore(self, request, pk=None):
@@ -137,6 +184,8 @@ class ServerViewSet(viewsets.ModelViewSet):
             server.is_deleted = False
             server.save(update_fields=["is_deleted"])
 
+            logger.info("server restored", extra={"server_id": server.id})
+
             create_audit_log(
                 user=request.user,
                 action='restore',
@@ -144,6 +193,8 @@ class ServerViewSet(viewsets.ModelViewSet):
                 target_id=server.id,
                 description=f"Server '{server.name}' restored"
             )
+
+            on_commit(lambda: self._refresh_server_gauge())
 
         return Response(
             {"message": "서버가 복구되었습니다."},
