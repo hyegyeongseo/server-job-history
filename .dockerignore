@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 가상환경
+.venv/
+.venv312/
+venv/
+env/
+
+# 환경/시크릿 — 절대 이미지에 들어가면 안 됨
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git / OS
+.git/
+.gitignore
+.gitattributes
+.DS_Store
+Thumbs.db
+
+# 로컬 DB
+*.sqlite3
+*.sqlite3-journal
+
+# Docker / K8s 자체 (이미지에 넣을 필요 없음)
+Dockerfile
+Dockerfile.*
+docker-compose*.yml
+.dockerignore
+k8s/
+manifests/
+charts/
+
+# 문서
+README.md
+README.*
+docs/
+*.md
+
+# 로그
+*.log
+logs/
+
+# 테스트 산출물
+.coverage
+htmlcov/
