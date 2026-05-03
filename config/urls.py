@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from config.observability.health import liveness, readiness
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -29,4 +30,9 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/docs/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
+    # Observability 관련 URL 패턴
+    path("", include("django_prometheus.urls")),
+    path("health/liveness/", liveness),
+    path("health/readiness/", readiness),
 ]
