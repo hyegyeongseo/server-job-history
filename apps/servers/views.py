@@ -39,7 +39,7 @@ class ServerViewSet(viewsets.ModelViewSet):
         from django.db.models import Count
         SERVER_COUNT_BY_STATUS._metrics.clear()
         qs = Server.objects.filter(is_deleted=False) \
-            .values("status") \
+            .values("status", "environment") \
             .annotate(cnt=Count("id"))
         for row in qs:
             SERVER_COUNT_BY_STATUS.labels(
