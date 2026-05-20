@@ -39,3 +39,4 @@ tzdata==2025.3
 uritemplate==4.2.0
 wrapt==2.1.2
 zipp==3.23.0
+whitenoise>=6.7

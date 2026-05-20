@@ -13,7 +13,7 @@ class Job(models.Model):
         ("canceled", "취소됨"),      # 작업 취소
     ]
 
-    server = models.ForeignKey(Server, on_delete=models.CASCADE, related_name="jobs")
+    server = models.ForeignKey(Server, on_delete=models.PROTECT, related_name="jobs")
 
     action_type = models.CharField(max_length=50)  # 예: "backup", "update", "restart"
     description = models.TextField()  # 작업에 대한 상세 설명

@@ -88,7 +88,8 @@ class JobViewSet(viewsets.ModelViewSet):
                 action="create",
                 target_type="jobs",
                 target_id=job.id,
-                description=f"Job created: {job.action_type} ({job.status})"
+                description=f"Job created: {job.action_type} ({job.status})",
+                request=self.request,
             )
 
     def perform_update(self, serializer):
@@ -106,16 +107,20 @@ class JobViewSet(viewsets.ModelViewSet):
 
             updated_instance = serializer.save()
 
-            changes = []
+            changes_dict = {}
             for field, old_value in old_data.items():
                 new_value = getattr(updated_instance, field)
-
                 if str(old_value) != str(new_value):
-                    changes.append(
-                        f"{field}: {old_value} -> {new_value}"
-                    )
+                    changes_dict[field] = {
+                        "old": str(old_value),
+                        "new": str(new_value),
+                    }
 
-            description = "; ".join(changes) if changes else "No changes"
+            description = (
+                "; ".join(f"{k}: {v['old']} -> {v['new']}"
+                          for k, v in changes_dict.items())
+                if changes_dict else "No changes"
+            )
 
             JOB_UPDATED_TOTAL.labels(
                 action_type=updated_instance.action_type,
@@ -132,6 +137,8 @@ class JobViewSet(viewsets.ModelViewSet):
                 target_type="jobs",
                 target_id=updated_instance.id,
                 description=description,
+                changes=changes_dict,
+                request=self.request,
             )  
     
     # Chain Job 조회

@@ -24,6 +24,13 @@ class AuditLog(models.Model):
     description = models.TextField(blank=True, null=True) 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=512, null=True, blank=True)
+    changes = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
     def __str__(self):
         return f"{self.action} - {self.target_type} ({self.target_id})"
 

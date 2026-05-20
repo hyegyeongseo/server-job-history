@@ -59,6 +59,10 @@ RUN mkdir -p /tmp/prom_metrics && chown app:app /tmp/prom_metrics
 # 앱 코드 복사 (가장 자주 바뀌므로 마지막 레이어)
 COPY --chown=app:app . /app
 
+# collectstatic — BUILD_TIME=true 로 SQLite 더미 분기 발동
+# 이 RUN 한 줄에만 환경변수 적용, 이후 단계로는 안 이어짐
+RUN BUILD_TIME=true python manage.py collectstatic --noinput
+
 USER app
 
 EXPOSE 8000

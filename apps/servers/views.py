@@ -11,8 +11,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.decorators import action
 from config.observability.logging import logger
-from config.observability.metrics import SERVER_COUNT_BY_STATUS
-from django.db.transaction import on_commit
 from opentelemetry import trace
 
 class ServerViewSet(viewsets.ModelViewSet):
@@ -33,19 +31,6 @@ class ServerViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'ip_address', 'id']
 
     ordering = ['-id']
-
-    # Gauge 전체 리셋 후 재집계
-    def _refresh_server_gauge(self):
-        from django.db.models import Count
-        SERVER_COUNT_BY_STATUS._metrics.clear()
-        qs = Server.objects.filter(is_deleted=False) \
-            .values("status", "environment") \
-            .annotate(cnt=Count("id"))
-        for row in qs:
-            SERVER_COUNT_BY_STATUS.labels(
-                status=row["status"],
-                environment=row["environment"],
-            ).set(row["cnt"])
 
     def perform_create(self, serializer):
         """
@@ -76,9 +61,8 @@ class ServerViewSet(viewsets.ModelViewSet):
                     f'Created server {server.name} '
                     f'({server.environment}) with IP {server.ip_address}'
                 ),
+                request=self.request,
             )
-
-            on_commit(lambda: self._refresh_server_gauge())
 
     
     def get_queryset(self):
@@ -115,12 +99,19 @@ class ServerViewSet(viewsets.ModelViewSet):
             })
 
             # 변경 내용에 이전 값과 새로운 값을 기록
-            changes = []
+            changes_dict = {}
             for field, old_value in old_data.items():
                 new_value = getattr(updated_instance, field)
                 if old_value != new_value:
-                    changes.append(f"{field}: {old_value} -> {new_value}")
-            description = "; ".join(changes) if changes else "No changes"
+                    changes_dict[field] = {
+                        "old": str(old_value),
+                        "new": str(new_value),
+                    }
+            description = (
+                "; ".join(f"{k}: {v['old']} -> {v['new']}"
+                          for k, v in changes_dict.items())
+                if changes_dict else "No changes"
+            )
 
             create_audit_log(
                 user=self.request.user,
@@ -128,9 +119,9 @@ class ServerViewSet(viewsets.ModelViewSet):
                 target_type='servers',
                 target_id=updated_instance.id,
                 description=description,
+                changes=changes_dict,
+                request=self.request,
             )
-
-            on_commit(lambda: self._refresh_server_gauge())
     
     def destroy(self, request, *args, **kwargs):       
         """
@@ -155,10 +146,9 @@ class ServerViewSet(viewsets.ModelViewSet):
                 action='delete',
                 target_type='servers',
                 target_id=instance.id,
-                description=f"Server '{instance.name}' deleted by {user_role} (Soft Delete)"
+                description=f"Server '{instance.name}' deleted by {user_role} (Soft Delete)",
+                request=request,
             )
-
-            on_commit(lambda: self._refresh_server_gauge())
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -191,10 +181,9 @@ class ServerViewSet(viewsets.ModelViewSet):
                 action='restore',
                 target_type='servers',
                 target_id=server.id,
-                description=f"Server '{server.name}' restored"
+                description=f"Server '{server.name}' restored",
+                request=request,
             )
-
-            on_commit(lambda: self._refresh_server_gauge())
 
         return Response(
             {"message": "서버가 복구되었습니다."},

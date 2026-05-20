@@ -1,19 +1,10 @@
-"""
-WSGI config for config project.
-
-It exposes the WSGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.0/howto/deployment/wsgi/
-"""
-
 import os
 
-from django.core.wsgi import get_wsgi_application
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.production")
-
+# OTEL 은 Phase 2 부터. 지금은 호출만 해두고 내부는 false-noop.
 from config.observability.tracing import setup_tracing
 setup_tracing()
 
+from django.core.wsgi import get_wsgi_application  # asgi 면 asgi
 application = get_wsgi_application()
