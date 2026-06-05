@@ -1,0 +1,22 @@
+# 앱 ConfigMap (12-factor env)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-job-manager-config
+  namespace: app
+data:
+  DJANGO_ENV: "production"
+  DJANGO_SETTINGS_MODULE: "config.settings.production"
+  ALLOWED_HOSTS: "*"                            # lab: kubelet probe Host=PodIP 400 회피. 운영은 도메인 + probe Host 헤더.
+  DB_HOST: "postgres.db.svc.cluster.local"      # ★ Tier2(CNPG) 가면 server-job-pg-rw.db.svc... 로 교체
+  DB_PORT: "5432"
+  DB_NAME: "server_job_history_db"
+  DB_USER: "django_user"
+  GUNICORN_WORKERS: "3"
+  APP_LOG_LEVEL: "INFO"
+  LOG_LEVEL: "WARNING"
+  COOKIE_SECURE: "false"                         # cert-manager(나중) 붙이면 true (Tier 0.5-(2))
+  SECURE_SSL_REDIRECT: "false"                   
+  OTEL_TRACING_ENABLED: "false"                  # ★ Tier 0.5-(3): false로 시작 → Step 1.6에서 overlay 패치로 true
+  OTEL_EXPORTER_OTLP_ENDPOINT: "tempo.monitoring.svc.cluster.local:4317"   # Alloy 아님 — Tempo 직결
+  OTEL_SERVICE_NAME: "server-job-manager"

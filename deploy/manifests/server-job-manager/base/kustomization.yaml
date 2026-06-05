@@ -1,0 +1,13 @@
+# blanket namespace를 안 둠(postgres만 db, 나머지는 app). 각 파일 metadata.namespace로 고정.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+  - configmap.yaml
+  - postgres.yaml            # Tier1 임시 — Tier2(CNPG)로 가면 이 줄 제거
+  - migrate-job.yaml
+  # ▼ Step 1.5에서 주석 해제 (kube-prometheus-stack 설치 후)
+  # - servicemonitor.yaml
+  # ▼ Step 1.7에서 주석 해제 (metrics-server 동작 확인 후)
+  # - hpa.yaml

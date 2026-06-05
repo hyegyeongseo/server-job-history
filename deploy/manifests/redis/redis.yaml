@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: redis-master, namespace: redis }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: redis } }
+  template:
+    metadata: { labels: { app: redis } }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4                                  # ★ 공식 이미지 핀
+          args: ["--save", "", "--appendonly", "no"]         # lab: 영속성 끔(브로커 용도)
+          ports: [{ containerPort: 6379 }]
+          resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 250m, memory: 256Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: redis-master, namespace: redis }
+spec:
+  selector: { app: redis }
+  ports: [{ port: 6379, targetPort: 6379 }]

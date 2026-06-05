@@ -1,0 +1,23 @@
+# ArgoCD PreSync 마이그레이션 Job
+# 앱 Pod 뜨기 전에 migrate 실행 → 롤링업데이트 스키마 불일치 방지. migrate는 멱등이라 매 sync 재실행 안전.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: server-job-migrate
+  namespace: app
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: { runAsNonRoot: true, runAsUser: 1000 }
+      containers:
+        - name: migrate
+          image: REPLACED_BY_OVERLAY
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - configMapRef: { name: server-job-manager-config }
+            - secretRef:    { name: server-job-manager-secret }

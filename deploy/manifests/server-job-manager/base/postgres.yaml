@@ -1,0 +1,47 @@
+# Tier 1 임시 PostgreSQL (db 네임스페이스). ★ Tier 2에서 CNPG로 교체하고 이 파일을 base에서 제거.
+# ★ 비밀번호는 파일에 두지 않는다 — postgres-secret 은 kubectl 로 생성(README / 00-create-secrets.sh).
+#   이 파일엔 비밀 값이 없으므로 공개 리포에 그대로 커밋해도 안전.
+# 비밀 아닌 값(DB명/유저)만 ConfigMap 으로 커밋 — 앱(config+secret 분리)과 같은 패턴.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: db
+data:
+  POSTGRES_DB: server_job_history_db
+  POSTGRES_USER: django_user
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: db
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          envFrom:
+            - configMapRef: { name: postgres-config }   # 비밀 아님: POSTGRES_DB / POSTGRES_USER
+            - secretRef:    { name: postgres-secret }    # ★ kubectl 로 생성: POSTGRES_PASSWORD (app DB_PASSWORD 와 동일)
+          ports: [{ containerPort: 5432 }]
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data, subPath: pgdata }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 5Gi } }   # 기본 StorageClass 필요
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: db
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]

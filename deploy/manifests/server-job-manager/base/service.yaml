@@ -1,0 +1,15 @@
+# NodePort 노출 (나중에 ClusterIP + HTTPRoute로 승격)
+apiVersion: v1
+kind: Service
+metadata:
+  name: server-job-manager
+  namespace: app
+  labels: { app.kubernetes.io/name: server-job-manager }
+spec:
+  type: NodePort
+  selector: { app.kubernetes.io/name: server-job-manager }
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      nodePort: 30080            # curl http://<NODE-IP>:30080/health/readiness/
