@@ -9,7 +9,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.django import DjangoInstrumentor
-
+from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
 
 def setup_tracing():
     if os.getenv("OTEL_TRACING_ENABLED", "true").lower() == "false":
@@ -33,3 +33,4 @@ def setup_tracing():
     trace.set_tracer_provider(provider)
 
     DjangoInstrumentor().instrument()
+    Psycopg2Instrumentor().instrument()   # ★ DB 쿼리를 django span의 자식 span으로
