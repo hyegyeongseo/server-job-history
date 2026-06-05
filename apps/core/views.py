@@ -7,6 +7,7 @@ from rest_framework_simplejwt.settings import api_settings
 from .serializers import JWTLogInSerializer, EmptySerializer
 from config.observability.logging import logger
 from config.observability.metrics import LOGIN_TOTAL
+import os
 
 # Refresh 토큰을 쿠키에 저장
 def set_refresh_token_cookie(response: Response, refresh_token: str) -> Response:
@@ -15,7 +16,8 @@ def set_refresh_token_cookie(response: Response, refresh_token: str) -> Response
         value=refresh_token,
         path='/api/auth',        # /api/auth 하위에서만 전송
         httponly=True,
-        secure=False,            # HTTPS 환경에서는 True
+        secure=os.getenv("COOKIE_SECURE", "false").lower() == "true",   # HTTPS 환경에서는 True
+        samesite="Lax",
         max_age=int(api_settings.REFRESH_TOKEN_LIFETIME.total_seconds())
     )
     return response
