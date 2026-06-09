@@ -1,0 +1,15 @@
+# Prometheus(kube-prometheus-stack)가 앱 /metrics 를 스크랩하게 함.
+# kps 라벨이 있어야 kps 의 Prometheus 가 이 ServiceMonitor를 선택
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: server-job-manager
+  namespace: app
+  labels: { release: kps }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: server-job-manager }
+  endpoints:
+    - port: http            # Service 의 포트 이름(=http). 숫자 아님.
+      path: /metrics
+      interval: 30s
