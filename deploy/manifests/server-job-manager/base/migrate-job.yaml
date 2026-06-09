@@ -13,6 +13,11 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      # ★ 비공개 GHCR pull 자격증명 — 앱 Deployment 와 동일하게 맞춤.
+      #   이게 없으면 migrate 파드는 익명으로 당기다 401 → ImagePullBackOff.
+      #   ArgoCD PreSync 훅으로도 매 sync 돌므로 매니페스트에 박아 둔다(커밋 대상).
+      imagePullSecrets:
+        - name: regcred
       securityContext: { runAsNonRoot: true, runAsUser: 1000 }
       containers:
         - name: migrate
