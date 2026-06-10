@@ -1,0 +1,11 @@
+# Tempo 준비 후 OTEL 켜기.
+# overlays/local/kustomization.yaml 의 patches: 블록(주석)을 풀면 이 파일이
+# base 의 server-job-manager-config 에 strategic-merge 로 합쳐져 OTEL_TRACING_ENABLED 를 true 로 덮어쓴다.
+# (base 는 "false" 로 시작. Tempo 가 OTLP 를 받기 전에 켜면 export 가 계속 실패하므로 순서가 중요.)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-job-manager-config
+  namespace: app
+data:
+  OTEL_TRACING_ENABLED: "true"
