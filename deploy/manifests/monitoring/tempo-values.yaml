@@ -2,6 +2,9 @@
 # helm install tempo grafana-community/tempo -n monitoring --version 2.2.1 -f <이 파일>
 tempo:
   receivers:
+    jaeger: null
+    zipkin: null
+    opencensus: null
     otlp:
       protocols:
         grpc:
