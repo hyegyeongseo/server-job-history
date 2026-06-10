@@ -2,10 +2,8 @@
 # helm install tempo grafana-community/tempo -n monitoring --version 2.2.1 -f <이 파일>
 tempo:
   receivers:
-    jaeger: null
-    zipkin: null
-    opencensus: null
-    otlp:
+    opencensus: null          # 이것만 제거(차트 기본값 삭제)
+    otlp:                      # otlp 는 명시
       protocols:
         grpc:
           endpoint: 0.0.0.0:4317
