@@ -1,0 +1,34 @@
+# SLO/SLI + error budget.  kubectl apply -f <이 파일>
+# 상태별 응답 카운터 django_http_responses_total_by_status_total 로 가용성 SLI 를 계산.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: server-job-slo
+  namespace: monitoring
+  labels: { release: kps }            # ★ kps Prometheus 가 ruleSelector 로 선택
+spec:
+  groups:
+    - name: slo.recording
+      rules:
+        - record: sli:availability:ratio_rate5m
+          expr: |
+            sum(rate(django_http_responses_total_by_status_total{status!~"5.."}[5m]))
+            /
+            sum(rate(django_http_responses_total_by_status_total[5m]))
+        - record: sli:availability:ratio_rate1h
+          expr: |
+            sum(rate(django_http_responses_total_by_status_total{status!~"5.."}[1h]))
+            /
+            sum(rate(django_http_responses_total_by_status_total[1h]))
+    - name: slo.alerts
+      rules:
+        - alert: ErrorBudgetBurnFast
+          expr: |
+            (1 - sli:availability:ratio_rate5m) > (1 - 0.99) * 14.4
+            and
+            (1 - sli:availability:ratio_rate1h) > (1 - 0.99) * 14.4
+          for: 2m
+          labels: { severity: page }
+          annotations:
+            summary: "Error budget 빠른 소진 (14.4x fast-burn)"
+            runbook: "https://github.com/hyegyeongseo/server-job-history/blob/main/docs/runbooks/error-budget.md"

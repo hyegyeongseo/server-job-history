@@ -1,0 +1,17 @@
+# Grafana(kps) sidecar 자동 등록 (grafana_datasource: "1"). Tempo query 포트 3200.
+# kubectl apply -f <이 파일>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-datasource
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  tempo.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo.monitoring.svc.cluster.local:3200

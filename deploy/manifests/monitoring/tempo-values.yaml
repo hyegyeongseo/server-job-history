@@ -1,0 +1,10 @@
+# monolithic Tempo 에 OTLP 수신(gRPC 4317 / HTTP 4318) 활성화.
+# helm install tempo grafana-community/tempo -n monitoring --version 2.2.1 -f <이 파일>
+tempo:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318

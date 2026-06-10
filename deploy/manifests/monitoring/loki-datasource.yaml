@@ -1,0 +1,18 @@
+# log — Loki datasource. kubectl apply -f <이 파일>
+# 서비스 이름은 차트 배포 모드에 따라 loki / loki-gateway 일 수 있음.
+# 설치 후 `kubectl -n monitoring get svc | grep loki` 로 확인하고 url 맞추기.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-datasource
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  loki.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.monitoring.svc.cluster.local:3100

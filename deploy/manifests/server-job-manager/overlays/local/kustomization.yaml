@@ -7,7 +7,7 @@ images:
   - name: REPLACED_BY_OVERLAY
     newName: ghcr.io/hyegyeongseo/server-job-manager      # 레지스트리 주소: GHCR/Docker Hub/로컬 레지스트리
     newTag: "0.1.0"                             # ★ docker push 한 태그와 동일
-# ▼ Step 1.6에서 주석 해제 — Tempo 준비 후 OTEL_TRACING_ENABLED=true 로 패치
-# patches:
-#   - path: configmap-otel-patch.yaml
-#     target: { kind: ConfigMap, name: server-job-manager-config }
+# Tempo 준비 후 OTEL_TRACING_ENABLED=true
+#patches:
+#  - path: configmap-otel-patch.yaml
+#    target: { kind: ConfigMap, name: server-job-manager-config }
