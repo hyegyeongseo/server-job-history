@@ -1,13 +1,28 @@
+# ArgoCD GitOps. overlays/local 를 소스로 앱을 선언.
+# ignoreDifferences(/spec/replicas) — self-heal 이 매니페스트 replicas(=2)로
+#   되돌려 HPA(min 2, max 6)와 싸우는 것을 방지.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
-metadata: { name: server-job-manager, namespace: argocd }
+metadata:
+  name: server-job-manager
+  namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/hyegyeongseo/server-job-history.git
     targetRevision: main
     path: deploy/manifests/server-job-manager/overlays/local
-  destination: { server: https://kubernetes.default.svc, namespace: app }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
-    syncOptions: ["CreateNamespace=true"]
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

@@ -1,0 +1,28 @@
+# web(HPA, CPU)
+# 전제: Deployment 에 resources.requests.cpu(=100m, deployment.yaml ✅) + metrics-server 동작.
+# ⚠️ metrics-server 가 떠 있어야 TARGETS 에 cpu% 가 뜬다. 없으면 <unknown>.
+#    그래서 base/kustomization.yaml 에서 기본 주석 처리 → metrics-server 확인 후 주석 해제.
+# ⚠️ self-heal ↔ HPA 충돌 방지: ArgoCD Application 에 ignoreDifferences(/spec/replicas) 가 있어야
+#    ArgoCD 가 매니페스트의 replicas(=2)로 되돌려 HPA 와 싸우지 않는다 → app-server-job-manager.yaml 참조.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: server-job-manager
+  namespace: app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: server-job-manager
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 120
