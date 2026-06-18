@@ -3,8 +3,6 @@
 #
 # 이유: grafana-community/loki 차트 기본값은 SimpleScalable/distributed라 S3 같은
 #       오브젝트 스토리지를 요구한다. lab은 single-binary + filesystem 으로 내려서 단순화.
-# ⚠️ 정확한 키는 차트 메이저 버전(6.x 기준 작성)에 따라 미세하게 다를 수 있다.
-#    설치 후 svc 이름/포트를 반드시 확인하고 datasource url 을 맞춘다.
 
 loki:
   auth_enabled: false
@@ -25,7 +23,7 @@ loki:
     retention_period: 168h        # 7일
     allow_structured_metadata: true
 
-deploymentMode: Monolithic        # ★ 6.x의 SingleBinary가 7.x+(현재 13.x)에서 Monolithic으로 개명됨 (singleBinary 블록은 그대로 사용)
+deploymentMode: Monolithic        # SingleBinary가 7.x+(현재 13.x)에서 Monolithic으로 개명됨 (singleBinary 블록은 그대로 사용)
 singleBinary:
   replicas: 1
   persistence:
