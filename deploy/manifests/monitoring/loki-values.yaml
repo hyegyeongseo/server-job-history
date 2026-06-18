@@ -1,0 +1,55 @@
+# Loki — single-binary + filesystem (단일 노드 lab용)
+# helm install loki grafana-community/loki -n monitoring --version <확인값> -f loki-values.yaml
+#
+# 이유: grafana-community/loki 차트 기본값은 SimpleScalable/distributed라 S3 같은
+#       오브젝트 스토리지를 요구한다. lab은 single-binary + filesystem 으로 내려서 단순화.
+# ⚠️ 정확한 키는 차트 메이저 버전(6.x 기준 작성)에 따라 미세하게 다를 수 있다.
+#    설치 후 svc 이름/포트를 반드시 확인하고 datasource url 을 맞춘다.
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"        # 과거 날짜여야 함
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  storage:
+    type: filesystem
+  limits_config:
+    retention_period: 168h        # 7일
+    allow_structured_metadata: true
+
+deploymentMode: Monolithic        # ★ 6.x의 SingleBinary가 7.x+(현재 13.x)에서 Monolithic으로 개명됨 (singleBinary 블록은 그대로 사용)
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# scalable/distributed 컴포넌트 끄기 (single-binary만 사용)
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# lab 불필요 컴포넌트 (memcached 캐시는 기본 메모리 요구가 커서 작은 노드에서 Pending 남 → 끔)
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+gateway:
+  enabled: false          # 끄면 쿼리 서비스는 'loki:3100'
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+minio:
+  enabled: false          # filesystem 쓰므로 내장 minio 불필요
