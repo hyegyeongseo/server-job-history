@@ -1,0 +1,158 @@
+# Grafana 대시보드 — server-job-manager SLO/지표.  kubectl apply -f <이 파일>
+# grafana_dashboard: "1" 라벨 → kps Grafana 사이드카가 monitoring 네임스페이스에서 자동 등록.
+#   (kps-values.yaml 의 grafana.sidecar.dashboards.enabled / searchNamespace: monitoring 가 전제)
+# 패널 지표는 실제 존재하는 것만 사용:
+#   - sli:availability:ratio_rate5m / _rate1h  ← server-job-slo.yaml 기록 룰
+#   - django_http_responses_total_by_status_total       (django-prometheus, /metrics)
+#   - django_http_requests_latency_seconds_by_view_method_bucket  (django-prometheus 히스토그램)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-job-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  server-job-manager.json: |
+    {
+      "title": "server-job-manager — SLO & metrics",
+      "uid": "server-job-manager-slo",
+      "tags": ["server-job-manager", "slo"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-6h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "type": "datasource",
+            "name": "datasource",
+            "label": "Prometheus",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "가용성 SLI (5m) — SLO 99%",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0.9,
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 0.99 },
+                  { "color": "green", "value": 0.995 }
+                ]
+              }
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "refId": "A", "expr": "sli:availability:ratio_rate5m", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "가용성 SLI (1h)",
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0.9,
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 0.99 },
+                  { "color": "green", "value": 0.995 }
+                ]
+              }
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "refId": "A", "expr": "sli:availability:ratio_rate1h", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Error budget burn (배수, 1h) — 14.4x 부터 page",
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 14.4 }
+                ]
+              }
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "refId": "A", "expr": "(1 - sli:availability:ratio_rate1h) / (1 - 0.99)", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "요청률 (status 별, rps)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "stacking": { "mode": "normal" } } } },
+          "targets": [
+            { "refId": "A", "expr": "sum by (status) (rate(django_http_responses_total_by_status_total[5m]))", "legendFormat": "{{status}}", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "5xx 에러률 (rps)",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": { "drawStyle": "line", "fillOpacity": 20 },
+              "color": { "mode": "fixed", "fixedColor": "red" }
+            }
+          },
+          "targets": [
+            { "refId": "A", "expr": "sum by (status) (rate(django_http_responses_total_by_status_total{status=~\"5..\"}[5m]))", "legendFormat": "{{status}}", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "응답 지연 p50 / p95 / p99 (초)",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line" } } },
+          "targets": [
+            { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))", "legendFormat": "p50", "datasource": { "type": "prometheus", "uid": "${datasource}" } },
+            { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))", "legendFormat": "p95", "datasource": { "type": "prometheus", "uid": "${datasource}" } },
+            { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))", "legendFormat": "p99", "datasource": { "type": "prometheus", "uid": "${datasource}" } }
+          ]
+        }
+      ]
+    }

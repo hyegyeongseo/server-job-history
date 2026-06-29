@@ -1,4 +1,4 @@
-# Loki — single-binary + filesystem (단일 노드 lab용)
+# Loki — single-binary + filesystem
 # helm install loki grafana-community/loki -n monitoring --version <확인값> -f loki-values.yaml
 #
 # 이유: grafana-community/loki 차트 기본값은 SimpleScalable/distributed라 S3 같은

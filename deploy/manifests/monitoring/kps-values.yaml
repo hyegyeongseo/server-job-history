@@ -1,0 +1,94 @@
+# kube-prometheus-stack (Prometheus + Grafana + Alertmanager) — 단일 노드 lab용 기본 install values
+#
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   helm install kps prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace --version <확인값> -f kps-values.yaml
+#
+# 릴리스 이름은 반드시 "kps" 여야 한다. 다른 파일들이 release: kps 라벨로 이 스택을 찾는다:
+#   - servicemonitor.yaml / server-job-slo.yaml 의 labels: { release: kps }
+#   - alertmanager-values.yaml 는 이 릴리스에 --reuse-values 로 덧붙이는 "패치"다(여기서 Slack 미설정).
+#
+# 설치 후 별도 kubectl apply 가 필요한 것(이 values 와 별개):
+#   loki-datasource.yaml / tempo-datasource.yaml  → Grafana 사이드카가 자동 등록(아래 sidecar 활성화가 전제)
+#   server-job-slo.yaml(PrometheusRule) / servicemonitor.yaml → Prometheus 가 selector 로 선택(아래 selector 가 전제)
+
+# ── Prometheus ───────────────────────────────────────────────────────────────
+prometheus:
+  prometheusSpec:
+    # 기본값(NilUsesHelmValues: true)도 release 라벨로 거르지만, 다른 파일이 release: kps 에
+    # 의존하므로 명시적으로 고정해 의도를 드러낸다.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector:
+      matchLabels: { release: kps }
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector:
+      matchLabels: { release: kps }       # server-job-slo.yaml(PrometheusRule) 선택
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector:
+      matchLabels: { release: kps }
+    probeSelector:
+      matchLabels: { release: kps }
+
+    retention: 15d
+    # lab: 작은 PVC 하나. StorageClass 는 클러스터 기본값 사용(없으면 storageClassName 지정).
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits:   { memory: 1Gi }
+
+# ── Alertmanager ──────────────────────────────────────────────────────────────
+# config(라우팅/리시버)는 alertmanager-values.yaml 에서 --reuse-values 로 주입한다.
+# 여기서는 활성화 + 저장소만. (Slack webhook 같은 비밀은 여기에 커밋하지 않는다.)
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    # Slack webhook Secret 마운트(secrets:)는 alertmanager-values.yaml 에 정의 — config 와 같은
+    # 파일에 둬야 --reuse-values 패치 한 번으로 함께 적용된다.
+    retention: 120h
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+
+# ── Grafana ───────────────────────────────────────────────────────────────────
+grafana:
+  enabled: true
+  # lab 전용 평문 비번. 운영은 secret 참조(admin.existingSecret)로 교체할 것.
+  adminPassword: "admin"
+  persistence:
+    enabled: true
+    size: 5Gi
+  sidecar:
+    datasources:
+      enabled: true                 # grafana_datasource: "1" ConfigMap 자동 등록(loki/tempo-datasource.yaml)
+      label: grafana_datasource
+      labelValue: "1"
+      searchNamespace: monitoring   # 데이터소스 ConfigMap 이 monitoring 네임스페이스에 있음
+    dashboards:
+      enabled: true                 # grafana_dashboard: "1" ConfigMap 자동 등록(server-job-dashboard.yaml 등)
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: monitoring
+      folder: /tmp/dashboards
+  # Prometheus 데이터소스는 차트가 자동 프로비저닝. Loki/Tempo 는 사이드카로 주입(위 datasource ConfigMap).
+
+# ── 클러스터 컴포넌트 스크랩 ────────────────────────────────────────────────────
+# 단일 노드 lab 에서 흔히 깨지는 타깃은 끈다(필요하면 켜기).
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
