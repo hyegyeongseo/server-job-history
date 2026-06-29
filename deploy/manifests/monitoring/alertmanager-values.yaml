@@ -25,10 +25,11 @@ alertmanager:
       group_interval: 5m
       repeat_interval: 4h
       routes:
-        # Watchdog = 항상 켜진 heartbeat(파이프라인 생존 확인용). Slack 으로 안 보낸다.
+        # severity=none = kps 메타 알림(Watchdog=heartbeat, InfoInhibitor=억제 헬퍼).
+        # 사람이 볼 게 아니라 Slack 으로 안 보낸다. alertname 개별이 아니라 severity 로 일괄 차단.
         - receiver: "null"
           matchers:
-            - alertname = "Watchdog"
+            - severity = "none"
         - receiver: "slack-page"
           matchers:
             - severity = "page"
