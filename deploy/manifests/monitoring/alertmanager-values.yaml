@@ -25,10 +25,15 @@ alertmanager:
       group_interval: 5m
       repeat_interval: 4h
       routes:
+        # Watchdog = 항상 켜진 heartbeat(파이프라인 생존 확인용). Slack 으로 안 보낸다.
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
         - receiver: "slack-page"
           matchers:
             - severity = "page"
     receivers:
+      - name: "null"          # 버리는 리시버(Watchdog 등 무음 처리)
       - name: "slack-default"
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhook/url
