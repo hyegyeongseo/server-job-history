@@ -9,3 +9,6 @@ resources:
   - migrate-job.yaml
   - servicemonitor.yaml      # kps(ServiceMonitor CRD) 설치 후 적용해야 함
   - hpa.yaml                 # metrics-server 동작 확인 후 활성화
+  - server-job-manager-secret-sealed.yaml
+  - regcred-sealed.yaml
+  - postgres-secret-sealed.yaml
