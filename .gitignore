@@ -11,9 +11,10 @@ venv/
 # Environment variables
 .env
 
-# Sealed Secrets — 개인키(봉인키) 백업은 절대 커밋 금지 (*-sealed.yaml 암호문은 커밋 OK)
+# Sealed Secrets — 봉인키 백업 산출물(개인키 평문)만 차단.
+#   (*-sealed.yaml 암호문, sealing-key-backup-cronjob.yaml 매니페스트는 커밋 OK)
 sealing-key-backup.yaml
-*sealing-key*.yaml
+sealing-keys-*.yaml
 
 # Django
 *.log

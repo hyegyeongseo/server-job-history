@@ -20,7 +20,7 @@
 ### 1) 컨트롤러 (helm, kube-system)
 `fullnameOverride=sealed-secrets-controller` 로 두면 kubeseal 기본값(kube-system/sealed-secrets-controller)과 맞아 플래그 없이 동작한다.
 ```bash
-helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+helm repo add sealed-secrets https://bitnami.github.io/sealed-secrets   # ★ bitnami-labs 아님(404)
 helm repo update
 helm install sealed-secrets sealed-secrets/sealed-secrets \
   -n kube-system --set-string fullnameOverride=sealed-secrets-controller
@@ -32,8 +32,8 @@ kubectl -n kube-system rollout status deploy/sealed-secrets-controller
 # 컨트롤러 버전 확인
 kubectl -n kube-system get deploy sealed-secrets-controller \
   -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
-# 그 버전으로 CLI 설치 (예: 0.27.1 — 위에서 확인한 값으로 치환)
-KUBESEAL_VERSION=0.27.1
+# 그 버전으로 CLI 설치 (예: 0.38.1 — 위에서 확인한 값으로 치환)
+KUBESEAL_VERSION=0.38.1
 curl -sSL -o kubeseal.tgz \
   "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
 tar xf kubeseal.tgz kubeseal && sudo install -m 755 kubeseal /usr/local/bin/kubeseal && rm kubeseal.tgz kubeseal
@@ -49,7 +49,7 @@ kubeseal --fetch-cert   # PEM 인증서가 출력되면 정상
 컨트롤러의 개인키를 잃으면 **모든 SealedSecret 을 영영 복호화 못 한다.** 클러스터 재구축 시에도 필요.
 ```bash
 kubectl -n kube-system get secret \
-  -l sealedsecrets.bitnami.com/sealing-key -o yaml > sealing-key-backup.yaml
+  -l sealedsecrets.bitnami.com/sealed-secrets-key=active -o yaml > sealing-key-backup.yaml
 ```
 > 이 파일은 **개인키 평문**이다. **git 에 절대 커밋 금지**, 비밀번호 매니저/오프라인 보관소에 보관.
 > 복구 시: 새 클러스터에 이 secret 을 apply 후 컨트롤러 재시작하면 같은 키로 복호화 가능.
@@ -64,9 +64,10 @@ kubectl -n <NS> get secret <NAME> -o yaml \
   | kubeseal --format yaml \
   > <NAME>-sealed.yaml
 ```
-- 기존 수동 secret 을 컨트롤러가 **인계(takeover)** 하게 하려면, 생성된 yaml 의
-  `spec.template.metadata.annotations` 에 `sealedsecrets.bitnami.com/managed: "true"` 추가.
-  (없으면 "이미 존재하고 SealedSecret 소유 아님" 에러 → 또는 기존 secret 을 먼저 지우고 apply)
+- 기존 수동 secret 을 컨트롤러가 **인계(takeover)** 하게 하려면, **봉인 전에 live secret 에**
+  `sealedsecrets.bitnami.com/managed=true` 주석을 단다(없으면 "이미 존재, SealedSecret 소유 아님" 에러):
+  `kubectl -n <NS> annotate secret <NAME> sealedsecrets.bitnami.com/managed=true`
+  (또는 기존 secret 을 먼저 지우고 apply)
 - 적용: `kubectl apply -f <NAME>-sealed.yaml` (또는 ArgoCD sync) → 컨트롤러가 진짜 secret 생성.
 
 ---
@@ -114,6 +115,13 @@ kubectl -n app get secret regcred -o yaml | kubeseal --format yaml \
 ---
 
 ## 운영 메모
-- **키 로테이션**: 컨트롤러는 30일마다 새 키를 만들고 옛 키도 보관(복호화 가능). 백업은 주기적으로 갱신.
-- **DR**: 클러스터 재구축 → `sealing-key-backup.yaml` apply → 컨트롤러 설치/재시작 → 기존 SealedSecret 들 그대로 복호화.
-- **무엇을 git 에 올리나**: `*-sealed.yaml`(암호문) = OK. `sealing-key-backup.yaml`(개인키) = 절대 금지.
+- **키 로테이션**: 컨트롤러는 30일(`--key-renew-period`)마다 새 봉인키를 **추가** 생성하고 옛 키도
+  보관(기존 SealedSecret 복호화 유지). 새 키로는 새 봉인이 암호화된다. **키 생성 자체는 자동**이다.
+- **봉인키 백업 자동화**: 새 키가 늘어나도 백업이 따라가도록 `sealing-key-backup-cronjob.yaml`
+  (주 1회, cp-1 노드 `/var/backups/sealed-secrets` 에 active 키 전부 export). 수동 apply:
+  `kubectl apply -f deploy/manifests/sealed-secrets/sealing-key-backup-cronjob.yaml`
+  즉시 테스트: `kubectl -n kube-system create job --from=cronjob/sealed-secrets-key-backup keybackup-test`
+  ⚠️ cp-1 디스크에 저장되므로 진짜 off-site 가 필요하면 그 디렉토리를 외부로 rsync/scp.
+- **DR**: 클러스터 재구축 → 백업한 키 secret apply → 컨트롤러 설치/재시작 → 기존 SealedSecret 들 그대로 복호화.
+- **무엇을 git 에 올리나**: `*-sealed.yaml`(암호문)·`sealing-key-backup-cronjob.yaml` = OK.
+  봉인키 백업 산출물(개인키 평문)·`~/sealing-key-backup.yaml` = **절대 금지**.

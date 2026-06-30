@@ -1,0 +1,98 @@
+# 봉인키(sealing key) 백업 CronJob
+# ──────────────────────────────────────────────────────────────────────────────
+# sealed-secrets 컨트롤러는 30일(--key-renew-period)마다 새 봉인키를 "추가" 생성한다.
+# 옛 키도 보관되어 기존 SealedSecret 은 계속 복호화되지만, DR 백업이 옛 시점에 멈춰 있으면
+# 새 키로 봉인된 secret 을 복구 못 한다. → 주기적으로 active 봉인키 전부를 export 해 백업.
+#
+# 저장 위치: cp-1(control-plane) 노드의 /var/backups/sealed-secrets (etcd 밖, VM 디스크).
+#   ⚠️ 같은 VM 디스크라 "etcd 손상/클러스터 재설치"는 대비되지만 "디스크 자체 유실"은 아님.
+#      진짜 off-site 가 필요하면 이 디렉토리를 외부로 rsync/scp 하거나 args 를 S3/MinIO push 로 교체.
+#
+# 적용(수동, kube-system 이라 ArgoCD 밖):
+#   kubectl apply -f deploy/manifests/sealed-secrets/sealing-key-backup-cronjob.yaml
+# 즉시 1회 테스트:
+#   kubectl -n kube-system create job --from=cronjob/sealed-secrets-key-backup keybackup-test
+#   kubectl -n kube-system logs job/keybackup-test
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sealed-secrets-key-backup
+  namespace: kube-system
+spec:
+  schedule: "0 3 * * 0"            # 매주 일요일 03:00
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: sealed-secrets-key-backup
+          restartPolicy: OnFailure
+          # cp-1 디스크에 저장 → control-plane 노드에 고정 + taint toleration
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: ""
+          tolerations:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+          securityContext:
+            runAsUser: 0            # hostPath 쓰기 위해 root
+          containers:
+            - name: backup
+              image: alpine/kubectl:1.34.1   # 사용 가능한 최신 태그로 핀(docker pull 로 확인)
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  TS=$(date +%Y%m%d-%H%M%S)
+                  OUT="/backup/sealing-keys-${TS}.yaml"
+                  kubectl get secret -n kube-system \
+                    -l sealedsecrets.bitnami.com/sealed-secrets-key=active \
+                    -o yaml > "${OUT}"
+                  chmod 600 "${OUT}"
+                  COUNT=$(grep -c '^- ' "${OUT}" 2>/dev/null || grep -c 'kind: Secret' "${OUT}")
+                  echo "backed up ${COUNT} key(s) -> ${OUT}"
+                  # 180일 지난 백업 정리
+                  find /backup -name 'sealing-keys-*.yaml' -mtime +180 -delete || true
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              hostPath:
+                path: /var/backups/sealed-secrets
+                type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sealed-secrets-key-backup
+  namespace: kube-system
+---
+# 봉인키 secret 은 이름에 랜덤 접미사(sealed-secrets-keyXXXXX)가 붙어 name 으로 못 좁힌다.
+# → kube-system 네임스페이스 내 secrets get/list 권한(이 ns 한정). 다소 넓으니 인지하고 사용.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sealed-secrets-key-backup
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sealed-secrets-key-backup
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sealed-secrets-key-backup
+subjects:
+  - kind: ServiceAccount
+    name: sealed-secrets-key-backup
+    namespace: kube-system
