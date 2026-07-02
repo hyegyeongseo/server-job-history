@@ -12,13 +12,15 @@
 > 서버 운영 작업의 이력·권한·감사를 관리하는 REST API를, 이 앱 자체를 **GitOps(ArgoCD)로 배포하고
 > 메트릭·로그·트레이스로 관측**하며 만들었다 — 특정 비즈니스가 아니라 **클라우드 운영 패턴을 검증한 실험 환경**.
 
-**핵심 키워드** — Django REST · RBAC · Audit Log · Job Chain · Kubernetes · ArgoCD GitOps · Prometheus/Loki/Tempo · SLO/Error-budget · sealed-secrets
+**핵심 키워드** — Kubernetes · GitOps(ArgoCD) · Observability(Prometheus/Loki/Tempo) · RBAC · SLO/Error-budget · sealed-secrets · Django REST
 
 ## What / Why / Impact
 
 - **What** — 서버 운영 작업(설치·점검·배포 등)을 **사람이 기록**하고 권한·감사와 함께 관리하는 REST API + 그 운영 환경
 - **Why** — 운영 작업은 "누가·언제·무엇을" 했는지 **추적·통제**돼야 하고, 시스템 자체도 **장애·확장·배포**를 견뎌야 한다
 - **Impact** — (서비스) 작업 이력 추적성 · RBAC · 감사 로그 / (운영) GitOps 배포 자동화 · SLO 장애 감지 · `trace_id` 원인 추적
+
+**할 수 있는 것** — 서버 등록·상태 관리 · 작업 생성/정정([Job Chain](#핵심-4가지)) · 역할별 권한 검사(RBAC) · 감사 로그 조회 (API 상세는 [상세 문서](#상세-문서))
 
 ## 아키텍처
 
@@ -79,7 +81,8 @@ flowchart TB
 3. **GitOps 배포** — ArgoCD가 git을 단일 소스로 self-heal 동기화, **PreSync 마이그레이션 → 롤링 업데이트**.
 4. **Observability** — 메트릭·로그·트레이스를 **하나의 `trace_id`로 상관**, **SLO/error-budget 알림**(Slack)까지.
 
-> **직접 만든 것** — (코드) RBAC 2단계 권한 · 감사 로그 diff · 관측 미들웨어 · 커스텀 Prometheus 메트릭 · 로그↔트레이스 상관 · JWT 흐름 / (인프라) kubeadm 구축 · ArgoCD · 관측 스택 · sealed-secrets · 멀티스테이지 Docker
+> **직접 구현(코드)** — RBAC 2단계 권한 · 감사 로그 diff · 관측 미들웨어 · 커스텀 Prometheus 메트릭 · 로그↔트레이스 상관 · JWT 흐름
+> **직접 구축(인프라)** — kubeadm 클러스터 · ArgoCD · 관측 스택(Prometheus/Loki/Tempo) · sealed-secrets · 멀티스테이지 Docker
 
 ## 결과 · 검증
 
@@ -92,12 +95,22 @@ k6 부하 → 앱 /metrics → Prometheus → Grafana(대시보드) · Alertmana
 ```
 
 - ✅ **GitOps 배포 파이프라인** — ArgoCD self-heal 동기화, PreSync 마이그레이션 → 롤링 업데이트 ([스크린샷](#스크린샷))
-- ✅ **3-신호 상관관계** — 하나의 `trace_id`로 로그(Loki) ↔ 트레이스(Tempo) 교차 추적. DB 쿼리는 ms인데 요청 전체는 6s → **병목이 DB가 아님을 트레이싱으로 확인**
-- ✅ **API 지연 가시화** — Prometheus 히스토그램 기반 **p50/p95/p99를 대시보드에 시각화**(절대값이 아니라 추세·분포를 본다)
+- ✅ **지연 분포 가시화** — Prometheus 히스토그램으로 **p50/p95/p99**를 대시보드에 시각화(절대값이 아니라 추세·분포를 본다)
+- ✅ **병목 원인 추적** — 하나의 `trace_id`로 로그(Loki) ↔ 트레이스(Tempo) 교차. "p95는 높은데 DB 쿼리는 ms" → **병목이 DB가 아님을 규명**
 - ✅ **HPA 오토스케일** — k6 부하로 **CPU 86%(>70%) → Deployment 2 → 6 replicas** 스케일 확인
 - ✅ **SLO/error-budget 반응** — DB 장애 주입 시 **가용성 SLI 100% → 41% 급락 + 5xx 상승 + burn 상승**을 대시보드로 실시간 관측 (Slack webhook 연동 확인됨)
 - ✅ **sealed-secrets** — 봉인 secret git 커밋 → 컨트롤러 복호화, ArgoCD 트리에 `sealedsecret → secret` 표시. 봉인키 백업 CronJob 동작 확인
 - ✅ **노드 장애 복구** — 노드 다운 시 파드 자동 재스케줄 (local-path PVC 워크로드는 노드 복귀 시 복구)
+
+## 까다로웠던 문제 (트러블슈팅)
+
+lab을 운영하며 실제로 부딪힌 문제들 — "가장 어려웠던 것"으로 설명하기 좋은 것들:
+
+- **GitOps ↔ HPA 충돌** — ArgoCD self-heal이 HPA가 조정한 `replicas`를 매니페스트 값으로 되돌려 플래핑 → `ignoreDifferences(/spec/replicas)`로 소유권 분리
+- **StatefulSet + local-path 노드 고정** — 노드를 끄자 postgres가 `Pending`·prometheus가 죽은 노드에서 `Terminating` 정지(StatefulSet 특성) → 원인(PVC 노드 고정)을 파악하고 force-delete로 재스케줄
+- **Prometheus 멀티프로세스 메트릭** — gunicorn 멀티워커에서 Gauge가 stale-label 문제 발생 → 매 scrape마다 DB를 집계하는 **커스텀 Collector**(멀티프로세스-safe)로 해결
+
+> 각 문제의 대안·판단은 [설계 결정 · Lessons Learned](docs/design-decisions.md#배운-것-lessons-learned)에.
 
 ## Secret / Key 관리
 
@@ -112,19 +125,23 @@ GitOps에서 비밀을 git에 둘 수 없다는 문제를 **Bitnami sealed-secre
 
 ## 스크린샷
 
-**3-신호 상관관계** — 하나의 `trace_id`로 Loki 로그(왼쪽) ↔ Tempo 트레이스(오른쪽) 연결. DB 쿼리(SELECT)는 ms인데 요청 전체는 6.2s → **병목이 DB가 아님을 트레이싱으로 확인**
+### 관측성 — 3-신호 상관관계
+하나의 `trace_id`로 Loki 로그(왼쪽) ↔ Tempo 트레이스(오른쪽) 연결. DB 쿼리(SELECT)는 ms인데 요청 전체는 6.2s → **병목이 DB가 아님을 트레이싱으로 확인**.
 ![trace-log correlation](docs/images/correlation.png)
 
-**GitOps 배포 (ArgoCD)** — `Synced + Healthy` 리소스 트리. SealedSecrets(`sealedsecret → secret`)·PreSync 마이그레이션 Job·HPA·ServiceMonitor 포함
+### SLO · 장애 대응
+정상과 **DB 장애 주입** 시를 대비 — 가용성 SLI가 100% → **41% 급락**, 5xx(500·503) 상승, error-budget burn 상승. **SLO가 실제로 반응함**을 확인.
+
+| 정상 | DB 장애 주입 |
+|---|---|
+| ![dashboard normal](docs/images/grafana-slo.png) | ![dashboard burn](docs/images/grafana-slo-burn.png) |
+
+### GitOps 배포 (ArgoCD)
+`Synced + Healthy` 리소스 트리 — SealedSecrets(`sealedsecret → secret`)·PreSync 마이그레이션 Job·HPA·ServiceMonitor 포함.
 ![ArgoCD tree](docs/images/argocd.png)
 
-**SLO·지연 대시보드 (정상)** — 가용성 SLI 100%, 요청률(status별), p50/p95/p99 지연
-![dashboard normal](docs/images/grafana-slo.png)
-
-**장애 주입 (DB 다운)** — 가용성 SLI 100% → **41% 급락**, 5xx(500·503) 상승, error-budget burn 상승
-![dashboard burn](docs/images/grafana-slo-burn.png)
-
-**HPA 오토스케일** — k6 부하로 CPU **86%(>70%)** 돌파 → replicas **2 → 6** 스케일
+### 오토스케일 (HPA)
+k6 부하로 CPU **86%(>70%)** 돌파 → replicas **2 → 6** 스케일.
 
 | ① CPU 임계 초과 (트리거) | ② 6 replicas로 스케일 완료 |
 |---|---|
