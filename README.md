@@ -10,7 +10,7 @@
 
 > **GitOps · Observability · RBAC를 적용해 "운영 관점"의 백엔드 시스템을 직접 구축·검증한 개인 프로젝트.**
 > 서버 운영 작업의 이력·권한·감사를 관리하는 REST API를, 이 앱 자체를 **GitOps(ArgoCD)로 배포하고
-> 메트릭·로그·트레이스로 관측**하며 만들었다 — 특정 비즈니스가 아니라 **클라우드 운영 패턴을 검증한 실험 환경**.
+> 메트릭·로그·트레이스로 관측**하며 만들었습니다 — 특정 비즈니스가 아니라 **클라우드 운영 패턴을 검증한 실험 환경**.
 
 **핵심 키워드** — Kubernetes · GitOps(ArgoCD) · Observability(Prometheus/Loki/Tempo) · RBAC · SLO/Error-budget · sealed-secrets · Django REST
 
